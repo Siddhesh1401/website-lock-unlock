@@ -148,6 +148,7 @@
     const token = params.get('t');
     const hostname = params.get('s') || 'Unknown';
     const passwordHash = params.get('h');
+    const passwordSalt = params.get('x');
     const expiresAt = parseInt(params.get('e')) || 0;
 
     // Elements
@@ -169,12 +170,12 @@
     function init() {
       hostnameEl.textContent = hostname;
 
-      if (!token || !passwordHash) {
-        showError('Invalid unlock link');
+      if (!token || !passwordHash || !passwordSalt) {
+        showError('Invalid unlock link. Configure Phone Unlock URL in extension settings.');
         return;
       }
 
-      if (Date.now() > expiresAt) {
+      if (expiresAt && Date.now() > expiresAt) {
         showError('This link has expired. Generate a new QR code.');
         return;
       }
@@ -222,13 +223,47 @@
       setInterval(updateTimer, 1000);
     }
 
-    // Hash password using SHA-256
-    async function hashPassword(password) {
+    // Convert hex to ArrayBuffer
+    function hexToBuffer(hex) {
+      const bytes = new Uint8Array(hex.length / 2);
+      for (let i = 0; i < hex.length; i += 2) {
+        bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
+      }
+      return bytes.buffer;
+    }
+
+    // Convert ArrayBuffer to hex
+    function bufferToHex(buffer) {
+      return Array.from(new Uint8Array(buffer))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+    }
+
+    // Hash password using PBKDF2 (same as extension)
+    async function hashPassword(password, saltHex) {
       const encoder = new TextEncoder();
-      const data = encoder.encode(password);
-      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-      const hashArray = Array.from(new Uint8Array(hashBuffer));
-      return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+      const salt = new Uint8Array(hexToBuffer(saltHex));
+      
+      const keyMaterial = await crypto.subtle.importKey(
+        'raw',
+        encoder.encode(password),
+        'PBKDF2',
+        false,
+        ['deriveBits']
+      );
+
+      const derivedBits = await crypto.subtle.deriveBits(
+        {
+          name: 'PBKDF2',
+          salt: salt,
+          iterations: 100000,
+          hash: 'SHA-256'
+        },
+        keyMaterial,
+        256
+      );
+
+      return bufferToHex(derivedBits);
     }
 
     // Handle form submission
@@ -246,23 +281,18 @@
       passwordError.textContent = '';
 
       try {
-        const hashedInput = await hashPassword(password);
+        // Hash input password with PBKDF2 using the salt
+        const hashedInput = await hashPassword(password, passwordSalt);
         
         // Compare hashes
         if (hashedInput === passwordHash) {
-          // Store unlock in localStorage (extension will poll this)
+          // Store unlock in localStorage
           const unlockKey = `wl_unlock_${token}`;
           localStorage.setItem(unlockKey, JSON.stringify({
             unlocked: true,
             unlockedAt: Date.now(),
             token: token
           }));
-
-          // Also try to notify via BroadcastChannel (for same-origin)
-          try {
-            const bc = new BroadcastChannel('website_lock_unlock');
-            bc.postMessage({ type: 'UNLOCKED', token: token });
-          } catch (e) {}
 
           showSuccess();
         } else {
