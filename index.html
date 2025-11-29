@@ -114,8 +114,21 @@
           <polyline points="20 6 9 17 4 12"></polyline>
         </svg>
       </div>
-      <p><strong>✓ Unlocked!</strong></p>
-      <p style="color: rgba(255,255,255,0.5); font-size: 12px; margin-top: 6px;">Website is now accessible</p>
+      <p><strong>✓ Password Verified!</strong></p>
+      <p style="color: rgba(255,255,255,0.7); font-size: 13px; margin-top: 10px;">Enter this code on your computer:</p>
+      <div id="verify-code-display" style="
+        font-size: 32px;
+        font-family: monospace;
+        font-weight: bold;
+        letter-spacing: 8px;
+        color: #22c55e;
+        background: rgba(34, 197, 94, 0.15);
+        padding: 15px 25px;
+        border-radius: 12px;
+        margin: 15px 0;
+        border: 2px solid rgba(34, 197, 94, 0.3);
+      "></div>
+      <p style="color: rgba(255,255,255,0.5); font-size: 11px;">Type this code in the QR unlock popup</p>
     </div>
     
     <div class="status error" id="status-error" style="display: none;">
@@ -149,6 +162,7 @@
     const hostname = params.get('s') || 'Unknown';
     const passwordHash = params.get('h');
     const passwordSalt = params.get('x');
+    const verifyCode = params.get('v'); // 6-digit verification code
     const expiresAt = parseInt(params.get('e')) || 0;
 
     // Elements
@@ -205,7 +219,14 @@
       statusLoading.style.display = 'none';
       authForm.classList.remove('show');
       timerEl.style.display = 'none';
+      tokenDisplay.style.display = 'none';
       statusSuccess.style.display = 'block';
+      
+      // Show the verification code
+      const verifyCodeDisplay = document.getElementById('verify-code-display');
+      if (verifyCodeDisplay && verifyCode) {
+        verifyCodeDisplay.textContent = verifyCode;
+      }
     }
 
     function startTimer() {
